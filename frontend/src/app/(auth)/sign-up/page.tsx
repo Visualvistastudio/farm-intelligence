@@ -31,7 +31,7 @@ export default function SignUpPage() {
         country_code: 'NG'
       });
       login(res.access_token, res.user);
-      router.push('/app/onboarding');
+      router.push('/app');
     } catch (err: any) {
       setError(err.message || 'Registration failed.');
     } finally {

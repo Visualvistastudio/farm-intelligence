@@ -24,11 +24,14 @@ class AdminLoginRequest(BaseModel):
     password: str
 
 class AdminLoginResponse(BaseModel):
-    requires_otp: bool
+    requires_otp: bool = False
     email: str
     message: str
-    # If temporary password must be changed immediately:
+    # If temporary password must be changed:
     must_change_password: bool = False
+    access_token: Optional[str] = None
+    token_type: Optional[str] = "bearer"
+    user: Optional["UserOut"] = None
     temp_session_token: Optional[str] = None
 
 class AdminOTPVerifyRequest(BaseModel):

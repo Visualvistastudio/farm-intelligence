@@ -91,8 +91,8 @@ def login_farmer(req: UserLoginRequest, db: Session = Depends(get_db)):
 @router.post("/admin/login", response_model=AdminLoginResponse)
 def admin_login_step1(req: AdminLoginRequest, request: Request, db: Session = Depends(get_db)):
     """
-    Super Admin & Admin 2-Step Login (PRD Addendum Section 4 & 5).
-    Validates credentials and dispatches an email OTP challenge.
+    Super Admin & Admin Login.
+    Validates credentials and authenticates directly with token.
     """
     user = db.query(User).filter_by(email=req.email.lower()).first()
     if not user or not user.is_admin or not verify_password(req.password, user.hashed_password):
@@ -102,32 +102,18 @@ def admin_login_step1(req: AdminLoginRequest, request: Request, db: Session = De
     if user.account_status == "suspended":
         raise HTTPException(status_code=403, detail="Administrator account is suspended.")
 
-    # Generate and hash OTP
-    otp = generate_otp()
-    otp_hash = hash_otp(otp)
-    expires = datetime.now(timezone.utc) + timedelta(minutes=settings.OTP_EXPIRE_MINUTES)
+    token = create_access_token(user.id, claims={"is_admin": True, "must_change_password": user.must_change_password})
+    user_out = _build_user_out(user, db)
+    log_audit(db, user.id, user.email, "admin_login_success", "user", details={"direct_access": True}, ip_address=request.client.host if request.client else None)
 
-    challenge = PasswordRecoveryChallenge(
-        email=user.email,
-        hashed_otp=otp_hash,
-        expires_at=expires,
-        used=False,
-        attempts=0
-    )
-    db.add(challenge)
-    db.commit()
-
-    # Deliver OTP via Email
-    EmailService.send_otp_email(user.email, otp, purpose="Admin Login Verification")
-
-    log_audit(db, user.id, user.email, "admin_otp_dispatched", "user", details={"must_change_password": user.must_change_password})
-
-    # Return OTP requirement
     return AdminLoginResponse(
-        requires_otp=True,
+        requires_otp=False,
         email=user.email,
         must_change_password=user.must_change_password,
-        message="A 6-digit verification code has been sent to your administrator email address."
+        message="Administrator authenticated successfully.",
+        access_token=token,
+        token_type="bearer",
+        user=user_out
     )
 
 @router.post("/admin/verify-otp", response_model=TokenResponse)

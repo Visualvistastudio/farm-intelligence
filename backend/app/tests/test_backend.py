@@ -51,32 +51,37 @@ def test_super_admin_bootstrap():
     assert verify_password("123456789", admin_user.hashed_password) is True
     db.close()
 
-def test_admin_login_otp_flow(client):
-    """Verify 2-step admin login with OTP challenge."""
-    # Step 1: Submit credentials
+def test_admin_direct_login_and_password_rotation(client):
+    """Verify direct admin login with token and in-dashboard password rotation."""
+    # Step 1: Submit credentials directly
     login_res = client.post("/api/v1/auth/admin/login", json={
         "email": "ologunemmanuel2015@gmail.com",
         "password": "123456789"
     })
     assert login_res.status_code == 200
     data = login_res.json()
-    assert data["requires_otp"] is True
+    assert data["requires_otp"] is False
     assert data["must_change_password"] is True
+    assert "access_token" in data
+    token = data["access_token"]
 
-    # Retrieve dispatched OTP from DB for testing
+    # Step 2: Rotate password via in-dashboard API using the authenticated token
+    change_res = client.post(
+        "/api/v1/auth/admin/change-password",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "email": "ologunemmanuel2015@gmail.com",
+            "current_password": "123456789",
+            "new_password": "PermanentAdminPassword2026!"
+        }
+    )
+    assert change_res.status_code == 200
+
+    # Step 3: Verify profile updated
     db = TestingSessionLocal()
-    challenge = db.query(PasswordRecoveryChallenge).filter_by(
-        email="ologunemmanuel2015@gmail.com",
-        used=False
-    ).order_by(PasswordRecoveryChallenge.created_at.desc()).first()
-    assert challenge is not None
-
-    # Step 2: In a real test, verify with the mock/known hash or verify that invalid OTP fails
-    bad_otp_res = client.post("/api/v1/auth/admin/verify-otp", json={
-        "email": "ologunemmanuel2015@gmail.com",
-        "otp": "000000"
-    })
-    assert bad_otp_res.status_code == 400
+    admin_user = db.query(User).filter_by(email="ologunemmanuel2015@gmail.com").first()
+    assert admin_user.must_change_password is False
+    assert verify_password("PermanentAdminPassword2026!", admin_user.hashed_password) is True
     db.close()
 
 def test_farmer_registration_and_login(client):

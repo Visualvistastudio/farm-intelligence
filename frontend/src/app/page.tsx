@@ -31,9 +31,6 @@ export default function HomePage() {
           </nav>
 
           <div className="flex items-center space-x-3">
-            <Link href="/admin/login" className="hidden sm:inline-flex text-xs font-semibold text-gray-500 hover:text-gray-900 px-2 py-1">
-              Admin Portal
-            </Link>
             <Link href="/login" className="text-sm font-medium text-gray-700 hover:text-forest-900 px-3 py-2">
               Sign In
             </Link>
