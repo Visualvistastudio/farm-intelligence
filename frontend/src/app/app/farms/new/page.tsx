@@ -167,7 +167,11 @@ export default function NewFarmPage() {
           <InteractiveMap
             editable={true}
             initialPolygon={polygonCoords}
-            height="380px"
+            height="460px"
+            onPolygonChange={(newPoly, newArea) => {
+              setPolygonCoords(newPoly);
+              setAreaHa(newArea);
+            }}
           />
 
           <div className="bg-forest-50 p-3 rounded-xl border border-forest-100 text-xs text-forest-900 flex items-start space-x-2">

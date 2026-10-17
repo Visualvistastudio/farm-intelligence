@@ -54,9 +54,26 @@ def run_assessment(req: SuitabilityAssessmentRequest, current_user: User = Depen
     Run evidence-grounded crop suitability assessment, spatial zoning,
     and yield estimation for a designated field.
     """
+    # Resilient field resolution: accept either field_id or farm_id
     field = db.query(Field).join(Farm).filter(Field.id == req.field_id, Farm.owner_user_id == current_user.id).first()
     if not field:
-        raise HTTPException(status_code=404, detail="Field not found or access denied.")
+        # Check if req.field_id was passed as a farm_id
+        field = db.query(Field).join(Farm).filter(Farm.id == req.field_id, Farm.owner_user_id == current_user.id).first()
+        if not field:
+            farm = db.query(Farm).filter(Farm.id == req.field_id, Farm.owner_user_id == current_user.id).first()
+            if farm:
+                field = Field(
+                    farm_id=farm.id,
+                    name="Main Plot 1",
+                    boundary_geojson=farm.boundary_geojson,
+                    area_hectares=farm.calculated_area_hectares or 2.0,
+                    status="active"
+                )
+                db.add(field)
+                db.commit()
+                db.refresh(field)
+            else:
+                raise HTTPException(status_code=404, detail="Field or farm not found or access denied.")
 
     farm = field.farm
     zone = farm.agroecological_zone or "Northern Guinea Savannah"
@@ -71,12 +88,13 @@ def run_assessment(req: SuitabilityAssessmentRequest, current_user: User = Depen
         target_crop = db.query(Crop).filter_by(crop_code="maize").first() or db.query(Crop).first()
 
     # Create Assessment Job
+    inputs_payload = req.model_dump() if hasattr(req, "model_dump") else req.dict()
     job = AssessmentJob(
         user_id=current_user.id,
         field_id=field.id,
         assessment_type="full_agronomic",
         status="processing_spatial_data",
-        requested_inputs_json=json.dumps(req.dict()),
+        requested_inputs_json=json.dumps(inputs_payload, default=str),
         started_at=datetime.now(timezone.utc)
     )
     db.add(job)
@@ -148,8 +166,8 @@ def run_assessment(req: SuitabilityAssessmentRequest, current_user: User = Depen
             "confidence_reason": suitability["confidence_reason"],
             "yield_details": yield_res,
             "data_provenance": suitability["data_provenance"]
-        }),
-        limitations_json=json.dumps(suitability["limitations_warnings"])
+        }, default=str),
+        limitations_json=json.dumps(suitability["limitations_warnings"], default=str)
     )
     db.add(assessment)
     db.commit()
@@ -159,8 +177,8 @@ def run_assessment(req: SuitabilityAssessmentRequest, current_user: User = Depen
     layer = AssessmentLayer(
         assessment_id=assessment.id,
         layer_type="suitability_zones",
-        geojson_data=json.dumps(spatial_zones),
-        metadata_json=json.dumps({"legend": spatial_zones.get("properties", {}).get("legend", [])})
+        geojson_data=json.dumps(spatial_zones, default=str),
+        metadata_json=json.dumps({"legend": spatial_zones.get("properties", {}).get("legend", [])}, default=str)
     )
     db.add(layer)
 
@@ -174,7 +192,7 @@ def run_assessment(req: SuitabilityAssessmentRequest, current_user: User = Depen
         crop_id=target_crop.id,
         planting_window_start=start_window,
         planting_window_end=end_window,
-        plan_json=json.dumps({"stages": cultivation_stages, "planting_guidance": guidance}),
+        plan_json=json.dumps({"stages": cultivation_stages, "planting_guidance": guidance}, default=str),
         agronomy_version="1.0.0"
     )
     db.add(crop_plan)
