@@ -62,3 +62,34 @@ class AuditLogOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class PlanUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price_ngn: Optional[float] = None
+    billing_interval: Optional[str] = None
+    is_active: Optional[bool] = None
+    feature_limits: Optional[Dict[str, Any]] = None
+
+class PlanCreateRequest(BaseModel):
+    code: str
+    name: str
+    description: Optional[str] = None
+    price_ngn: float
+    billing_interval: str = "monthly"
+    is_active: bool = True
+    feature_limits: Dict[str, Any] = {}
+
+class SubscriberOverrideRequest(BaseModel):
+    user_id: str
+    plan_id: str
+    status: str = "active"
+    bonus_assessments: Optional[int] = 0
+    extend_days: Optional[int] = 30
+
+class AdminRoleUpdateRequest(BaseModel):
+    role_name: str
+
+class AdminStatusUpdateRequest(BaseModel):
+    status: str
+

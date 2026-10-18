@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -16,9 +16,11 @@ from app.models.user import (
     AuditLog, Permission, Role, RolePermission, User, UserRole
 )
 from app.schemas.admin import (
-    AdminInviteRequest, AdminOverviewMetrics, AdminUserUpdate,
-    AuditLogOut, PaystackSettingsUpdate, PlatformSettingsUpdate,
-    RoleAssignRequest, RoleCreateRequest
+    AdminInviteRequest, AdminOverviewMetrics, AdminRoleUpdateRequest,
+    AdminStatusUpdateRequest, AdminUserUpdate, AuditLogOut,
+    PaystackSettingsUpdate, PlanCreateRequest, PlanUpdateRequest,
+    PlatformSettingsUpdate, RoleAssignRequest, RoleCreateRequest,
+    SubscriberOverrideRequest
 )
 from app.services.email_service import EmailService
 from app.services.paystack_service import PaystackService
@@ -262,6 +264,60 @@ def create_custom_role(
     )
     return {"status": "success", "role_id": new_role.id, "name": new_role.name}
 
+@router.put("/access-control/admins/{admin_id}/role")
+def update_admin_staff_role(
+    admin_id: str,
+    req: AdminRoleUpdateRequest,
+    current_admin: User = Depends(require_permission("roles.manage")),
+    db: Session = Depends(get_db)
+):
+    """Super Admin: Reassign administrative role and department for staff member."""
+    target_admin = db.query(User).filter_by(id=admin_id, is_admin=True).first()
+    if not target_admin:
+        raise HTTPException(status_code=404, detail="Administrator not found.")
+
+    role = db.query(Role).filter_by(name=req.role_name).first()
+    if not role:
+        raise HTTPException(status_code=400, detail="Invalid role specified.")
+
+    # Reassign role
+    db.query(UserRole).filter_by(user_id=target_admin.id).delete()
+    user_role = UserRole(user_id=target_admin.id, role_id=role.id)
+    db.add(user_role)
+    db.commit()
+
+    log_audit(
+        db, current_admin.id, current_admin.email,
+        "admin_role_reassigned", "user", target_admin.id,
+        details={"admin_email": target_admin.email, "new_role": role.name}
+    )
+    return {"status": "success", "message": f"Role for {target_admin.email} updated to {role.display_name}."}
+
+@router.post("/access-control/admins/{admin_id}/status")
+def update_admin_staff_status(
+    admin_id: str,
+    req: AdminStatusUpdateRequest,
+    current_admin: User = Depends(require_permission("admins.manage")),
+    db: Session = Depends(get_db)
+):
+    """Super Admin: Suspend or reactivate administrative staff access."""
+    target_admin = db.query(User).filter_by(id=admin_id, is_admin=True).first()
+    if not target_admin:
+        raise HTTPException(status_code=404, detail="Administrator not found.")
+
+    if target_admin.email == settings.INITIAL_SUPER_ADMIN_EMAIL and req.status == "suspended":
+        raise HTTPException(status_code=400, detail="The primary Super Admin account cannot be suspended.")
+
+    target_admin.account_status = req.status
+    db.commit()
+
+    log_audit(
+        db, current_admin.id, current_admin.email,
+        "admin_status_updated", "user", target_admin.id,
+        details={"admin_email": target_admin.email, "new_status": req.status}
+    )
+    return {"status": "success", "message": f"Administrator {target_admin.email} status set to {req.status}."}
+
 @router.get("/payments")
 def list_payments(
     current_admin: User = Depends(require_permission("payments.read")),
@@ -383,7 +439,10 @@ def list_admin_subscriptions(
     for s in subs:
         sub_data.append({
             "id": s.id,
+            "user_id": s.user_id,
             "user_email": s.user.email if s.user else "Unknown",
+            "user_name": s.user.full_name if s.user else "Unknown",
+            "plan_id": s.plan_id,
             "plan_name": s.plan.name if s.plan else "Unknown",
             "status": s.status,
             "period_end": s.current_period_end,
@@ -396,6 +455,7 @@ def list_admin_subscriptions(
             "id": p.id,
             "name": p.name,
             "code": p.code,
+            "description": p.description or "",
             "price_ngn": p.price_minor_units / 100.0,
             "interval": p.billing_interval,
             "is_active": p.is_active,
@@ -403,6 +463,161 @@ def list_admin_subscriptions(
         })
 
     return {"subscribers": sub_data, "plans": plan_data}
+
+@router.put("/subscriptions/plans/{plan_id}")
+def update_subscription_plan(
+    plan_id: str,
+    req: PlanUpdateRequest,
+    current_admin: User = Depends(require_permission("subscription_plans.manage")),
+    db: Session = Depends(get_db)
+):
+    """Super Admin: Update plan pricing, usage quotas, and entitlement limits."""
+    plan = db.query(Plan).filter_by(id=plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Subscription plan not found.")
+
+    if req.name is not None:
+        plan.name = req.name
+    if req.description is not None:
+        plan.description = req.description
+    if req.price_ngn is not None:
+        plan.price_minor_units = int(round(req.price_ngn * 100))
+    if req.billing_interval is not None:
+        plan.billing_interval = req.billing_interval
+    if req.is_active is not None:
+        plan.is_active = req.is_active
+    if req.feature_limits is not None:
+        plan.feature_limits_json = json.dumps(req.feature_limits)
+
+    db.commit()
+    db.refresh(plan)
+
+    log_audit(
+        db, current_admin.id, current_admin.email,
+        "subscription_plan_updated", "plan", plan.id,
+        details={"name": plan.name, "code": plan.code, "price_ngn": plan.price_minor_units / 100.0, "is_active": plan.is_active}
+    )
+    return {
+        "status": "success",
+        "message": f"Plan '{plan.name}' updated successfully.",
+        "plan": {
+            "id": plan.id,
+            "name": plan.name,
+            "code": plan.code,
+            "description": plan.description,
+            "price_ngn": plan.price_minor_units / 100.0,
+            "interval": plan.billing_interval,
+            "is_active": plan.is_active,
+            "limits": json.loads(plan.feature_limits_json) if plan.feature_limits_json else {}
+        }
+    }
+
+@router.post("/subscriptions/plans")
+def create_subscription_plan(
+    req: PlanCreateRequest,
+    current_admin: User = Depends(require_permission("subscription_plans.manage")),
+    db: Session = Depends(get_db)
+):
+    """Super Admin: Create a new custom or regional subscription tier."""
+    existing = db.query(Plan).filter_by(code=req.code.lower().strip()).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Plan code '{req.code}' already exists.")
+
+    new_plan = Plan(
+        name=req.name.strip(),
+        code=req.code.lower().strip(),
+        description=req.description,
+        billing_interval=req.billing_interval,
+        price_minor_units=int(round(req.price_ngn * 100)),
+        currency="NGN",
+        feature_limits_json=json.dumps(req.feature_limits),
+        is_active=req.is_active
+    )
+    db.add(new_plan)
+    db.commit()
+    db.refresh(new_plan)
+
+    log_audit(
+        db, current_admin.id, current_admin.email,
+        "subscription_plan_created", "plan", new_plan.id,
+        details={"code": new_plan.code, "name": new_plan.name, "price_ngn": req.price_ngn}
+    )
+    return {
+        "status": "success",
+        "message": f"Plan '{new_plan.name}' created successfully.",
+        "plan": {
+            "id": new_plan.id,
+            "name": new_plan.name,
+            "code": new_plan.code,
+            "description": new_plan.description,
+            "price_ngn": new_plan.price_minor_units / 100.0,
+            "interval": new_plan.billing_interval,
+            "is_active": new_plan.is_active,
+            "limits": json.loads(new_plan.feature_limits_json) if new_plan.feature_limits_json else {}
+        }
+    }
+
+@router.post("/subscriptions/subscribers/override")
+def override_subscriber_account(
+    req: SubscriberOverrideRequest,
+    current_admin: User = Depends(require_permission("subscriptions.manage")),
+    db: Session = Depends(get_db)
+):
+    """Super Admin: Override a subscriber's tier, extend validity, or change account status."""
+    target_user = db.query(User).filter_by(id=req.user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Subscriber user not found.")
+
+    target_plan = db.query(Plan).filter_by(id=req.plan_id).first()
+    if not target_plan:
+        raise HTTPException(status_code=404, detail="Specified target plan not found.")
+
+    sub = db.query(Subscription).filter_by(user_id=target_user.id).order_by(Subscription.created_at.desc()).first()
+    now = datetime.now(timezone.utc)
+    extend_days = req.extend_days if (req.extend_days is not None and req.extend_days > 0) else 30
+
+    if sub:
+        sub.plan_id = target_plan.id
+        sub.status = req.status
+        base_date = sub.current_period_end if (sub.current_period_end and sub.current_period_end > now) else now
+        sub.current_period_end = base_date + timedelta(days=extend_days)
+    else:
+        sub = Subscription(
+            user_id=target_user.id,
+            plan_id=target_plan.id,
+            status=req.status,
+            current_period_start=now,
+            current_period_end=now + timedelta(days=extend_days)
+        )
+        db.add(sub)
+
+    db.commit()
+    db.refresh(sub)
+
+    log_audit(
+        db, current_admin.id, current_admin.email,
+        "subscriber_override_applied", "subscription", sub.id,
+        details={
+            "user_email": target_user.email,
+            "new_plan": target_plan.name,
+            "status": req.status,
+            "extend_days": extend_days,
+            "period_end": sub.current_period_end.isoformat()
+        }
+    )
+    return {
+        "status": "success",
+        "message": f"Subscriber {target_user.email} updated to {target_plan.name} (valid until {sub.current_period_end.strftime('%Y-%m-%d')}).",
+        "subscription": {
+            "id": sub.id,
+            "user_id": target_user.id,
+            "user_email": target_user.email,
+            "plan_id": target_plan.id,
+            "plan_name": target_plan.name,
+            "status": sub.status,
+            "period_end": sub.current_period_end
+        }
+    }
 
 @router.get("/data-sources")
 def list_data_sources(
