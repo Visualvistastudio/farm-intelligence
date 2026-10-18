@@ -61,6 +61,7 @@ export const api = {
   adminLogin: (data: any) => apiFetch('/auth/admin/login', { method: 'POST', body: JSON.stringify(data) }),
   adminVerifyOtp: (data: any) => apiFetch('/auth/admin/verify-otp', { method: 'POST', body: JSON.stringify(data) }),
   adminChangePassword: (data: any) => apiFetch('/auth/admin/change-password', { method: 'POST', body: JSON.stringify(data) }),
+  changePassword: (data: any) => apiFetch('/auth/change-password', { method: 'POST', body: JSON.stringify(data) }),
   forgotPassword: (data: any) => apiFetch('/auth/forgot-password', { method: 'POST', body: JSON.stringify(data) }),
   resetPassword: (data: any) => apiFetch('/auth/reset-password', { method: 'POST', body: JSON.stringify(data) }),
   getMe: () => apiFetch('/auth/me'),

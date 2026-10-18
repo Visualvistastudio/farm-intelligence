@@ -63,12 +63,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     setModalLoading(true);
     try {
       await api.adminChangePassword({
-        email: user?.email || '',
+        email: user?.email || undefined,
         current_password: currentPassword,
         new_password: newPassword,
       });
 
-      setModalSuccess('Password changed successfully! Permanent credentials active.');
+      setModalSuccess('Password changed successfully! Your new password is now active.');
       await refreshUser();
       setTimeout(() => {
         setShowPasswordModal(false);
@@ -82,6 +82,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     } finally {
       setModalLoading(false);
     }
+  };
+
+  const handleAdminLogout = () => {
+    localStorage.removeItem('fi_access_token');
+    router.push('/admin/login');
   };
 
   const navItems = [
@@ -156,7 +161,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <span>Change Password</span>
             </button>
             <button
-              onClick={logout}
+              onClick={handleAdminLogout}
               className="text-red-400 hover:text-red-300 flex items-center space-x-1 transition"
             >
               <LogOut className="w-3.5 h-3.5" />

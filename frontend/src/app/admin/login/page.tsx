@@ -12,7 +12,7 @@ export default function AdminLoginPage() {
   const { login } = useAuth();
   
   const [email, setEmail] = useState('ologunemmanuel2015@gmail.com');
-  const [password, setPassword] = useState('123456789');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -85,9 +85,9 @@ export default function AdminLoginPage() {
                 <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wide">
                   Password
                 </label>
-                <span className="text-[11px] text-slate-400">
-                  Initial temp: <code className="text-forest-400">123456789</code>
-                </span>
+                <Link href="/admin/forgot-password" className="text-xs text-forest-400 hover:text-forest-300 hover:underline">
+                  Forgot password?
+                </Link>
               </div>
               <div className="mt-1 relative rounded-md shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">

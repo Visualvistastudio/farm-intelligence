@@ -40,7 +40,11 @@ class AdminOTPVerifyRequest(BaseModel):
     temp_session_token: Optional[str] = None
 
 class AdminPasswordChangeRequest(BaseModel):
-    email: EmailStr
+    email: Optional[EmailStr] = None
+    current_password: str
+    new_password: str = Field(..., min_length=8)
+
+class PasswordChangeRequest(BaseModel):
     current_password: str
     new_password: str = Field(..., min_length=8)
 

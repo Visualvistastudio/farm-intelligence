@@ -13,8 +13,8 @@ from app.models.user import (
 )
 from app.schemas.auth import (
     AdminLoginRequest, AdminLoginResponse, AdminOTPVerifyRequest,
-    AdminPasswordChangeRequest, ForgotPasswordRequest, ResetPasswordRequest,
-    TokenResponse, UserLoginRequest, UserOut, UserRegisterRequest
+    AdminPasswordChangeRequest, ForgotPasswordRequest, PasswordChangeRequest,
+    ResetPasswordRequest, TokenResponse, UserLoginRequest, UserOut, UserRegisterRequest
 )
 from app.services.email_service import EmailService
 
@@ -161,14 +161,14 @@ def admin_change_password(req: AdminPasswordChangeRequest, current_user: User = 
     Mandatory password change workflow (PRD Addendum Section 3 & 4).
     Invalidates temporary password and updates credential to permanent strong hash.
     """
-    if current_user.email != req.email.lower():
+    if req.email and current_user.email != req.email.lower():
         raise HTTPException(status_code=403, detail="Unauthorized")
 
     if not verify_password(req.current_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="Current password is incorrect.")
 
-    if req.new_password == req.current_password or req.new_password == settings.INITIAL_SUPER_ADMIN_TEMP_PASSWORD:
-        raise HTTPException(status_code=400, detail="New password must differ from temporary or previous password.")
+    if req.new_password == req.current_password:
+        raise HTTPException(status_code=400, detail="New password must differ from current password.")
 
     current_user.hashed_password = hash_password(req.new_password)
     current_user.must_change_password = False
@@ -176,7 +176,24 @@ def admin_change_password(req: AdminPasswordChangeRequest, current_user: User = 
     db.commit()
 
     log_audit(db, current_user.id, current_user.email, "admin_password_rotated", "user", details={"status": "temporary_credential_cleared"})
-    return {"status": "success", "message": "Password changed successfully. You may now access all administrative features."}
+    return {"status": "success", "message": "Password changed successfully. You can now login with your new credentials."}
+
+@router.post("/change-password")
+def change_password(req: PasswordChangeRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Allow any authenticated user (farmer or admin) to update their account password."""
+    if not verify_password(req.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+
+    if req.new_password == req.current_password:
+        raise HTTPException(status_code=400, detail="New password must differ from current password.")
+
+    current_user.hashed_password = hash_password(req.new_password)
+    current_user.must_change_password = False
+    current_user.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    log_audit(db, current_user.id, current_user.email, "user_password_changed", "user")
+    return {"status": "success", "message": "Password changed successfully."}
 
 @router.post("/forgot-password")
 def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
@@ -185,6 +202,7 @@ def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
     Returns generic response to prevent account enumeration.
     """
     user = db.query(User).filter_by(email=req.email.lower()).first()
+    dev_otp = None
     if user:
         otp = generate_otp()
         otp_hash = hash_otp(otp)
@@ -200,8 +218,13 @@ def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
         db.add(challenge)
         db.commit()
         EmailService.send_otp_email(user.email, otp, purpose="Password Reset")
+        if not EmailService.is_configured():
+            dev_otp = otp
 
-    return {"message": "If an account with that email exists, a password reset code has been dispatched."}
+    res = {"message": "If an account with that email exists, a password reset code has been dispatched."}
+    if dev_otp:
+        res["dev_otp"] = dev_otp
+    return res
 
 @router.post("/reset-password")
 def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):

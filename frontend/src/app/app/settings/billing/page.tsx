@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useEffect, useState, Suspense } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { 
-  CreditCard, Check, ShieldCheck, AlertCircle, RefreshCw, Sparkles, CheckCircle2
+  CreditCard, Check, ShieldCheck, AlertCircle, RefreshCw, Sparkles, CheckCircle2, Lock
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -99,6 +100,24 @@ function BillingSettingsContent() {
         <p className="text-xs text-gray-500 mt-1">
           Secure payment integration powered by Paystack. Manage plan tiers and entitlements.
         </p>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200 space-x-6 text-sm font-semibold">
+        <Link
+          href="/app/settings/billing"
+          className="pb-3 border-b-2 border-forest-700 text-forest-800 flex items-center space-x-1.5"
+        >
+          <CreditCard className="w-4 h-4 text-forest-700" />
+          <span>Subscription & Billing</span>
+        </Link>
+        <Link
+          href="/app/settings/security"
+          className="pb-3 text-gray-500 hover:text-gray-900 flex items-center space-x-1.5 transition"
+        >
+          <Lock className="w-4 h-4" />
+          <span>Password & Security</span>
+        </Link>
       </div>
 
       {verifyMsg && (
