@@ -113,4 +113,7 @@ export const api = {
   getDataSources: () => apiFetch('/admin/data-sources'),
   syncDataSource: (id: string) => apiFetch(`/admin/data-sources/${id}/sync`, { method: 'POST' }),
   getAuditLogs: (limit = 50) => apiFetch(`/admin/audit-logs?limit=${limit}`),
+  getSMTPSettings: () => apiFetch('/admin/settings/smtp'),
+  updateSMTPSettings: (data: any) => apiFetch('/admin/settings/smtp', { method: 'POST', body: JSON.stringify(data) }),
+  testSMTPConnection: (recipientEmail: string) => apiFetch('/admin/settings/smtp/test', { method: 'POST', body: JSON.stringify({ recipient_email: recipientEmail }) }),
 };

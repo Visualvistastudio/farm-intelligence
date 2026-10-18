@@ -20,7 +20,7 @@ from app.schemas.admin import (
     AdminStatusUpdateRequest, AdminUserUpdate, AuditLogOut,
     PaystackSettingsUpdate, PlanCreateRequest, PlanUpdateRequest,
     PlatformSettingsUpdate, RoleAssignRequest, RoleCreateRequest,
-    SubscriberOverrideRequest
+    SMTPSettingsUpdate, SubscriberOverrideRequest, TestEmailRequest
 )
 from app.services.email_service import EmailService
 from app.services.paystack_service import PaystackService
@@ -425,6 +425,103 @@ def update_payment_settings(
         details={"test_mode": req.test_mode, "secret_key_provided": bool(req.secret_key)}
     )
     return {"status": "success", "message": "Paystack settings updated."}
+
+@router.get("/settings/smtp")
+def get_smtp_settings(
+    current_admin: User = Depends(require_permission("platform.settings.read")),
+    db: Session = Depends(get_db)
+):
+    """Retrieve SMTP mail configuration status with credentials masked."""
+    pw = settings.SMTP_PASSWORD.strip() if settings.SMTP_PASSWORD else ""
+    masked_pw = f"{pw[:2]}...{pw[-2:]}" if len(pw) > 4 else ("Configured" if pw else "Not configured")
+
+    return {
+        "smtp_host": settings.SMTP_HOST or "",
+        "smtp_port": settings.SMTP_PORT or 587,
+        "smtp_user": settings.SMTP_USER or "",
+        "smtp_password_masked": masked_pw,
+        "smtp_password_set": bool(pw),
+        "smtp_from_email": settings.SMTP_FROM_EMAIL or "noreply@farmintelligence.africa",
+        "smtp_from_name": settings.SMTP_FROM_NAME or "Farm Intelligence",
+        "is_configured": EmailService.is_configured(),
+        "status": "Operational" if EmailService.is_configured() else "Unconfigured"
+    }
+
+@router.post("/settings/smtp")
+def update_smtp_settings(
+    req: SMTPSettingsUpdate,
+    current_admin: User = Depends(require_permission("platform.settings.update")),
+    db: Session = Depends(get_db)
+):
+    """Update SMTP mail server parameters and persist in platform settings."""
+    if req.smtp_host is not None:
+        settings.SMTP_HOST = req.smtp_host.strip()
+    if req.smtp_port is not None:
+        settings.SMTP_PORT = int(req.smtp_port)
+    if req.smtp_user is not None:
+        settings.SMTP_USER = req.smtp_user.strip()
+    if req.smtp_password is not None and req.smtp_password.strip():
+        settings.SMTP_PASSWORD = req.smtp_password.strip()
+    if req.smtp_from_email is not None:
+        settings.SMTP_FROM_EMAIL = req.smtp_from_email.strip()
+    if req.smtp_from_name is not None:
+        settings.SMTP_FROM_NAME = req.smtp_from_name.strip()
+
+    # Persist in PlatformSetting database table
+    smtp_dict = {
+        "smtp_host": settings.SMTP_HOST,
+        "smtp_port": settings.SMTP_PORT,
+        "smtp_user": settings.SMTP_USER,
+        "smtp_password": settings.SMTP_PASSWORD,
+        "smtp_from_email": settings.SMTP_FROM_EMAIL,
+        "smtp_from_name": settings.SMTP_FROM_NAME,
+    }
+
+    setting_row = db.query(PlatformSetting).filter_by(key="smtp_settings").first()
+    if not setting_row:
+        setting_row = PlatformSetting(
+            key="smtp_settings",
+            value_json=json.dumps(smtp_dict),
+            description="Dynamic SMTP Mail Server configuration",
+            updated_by_user_id=current_admin.id
+        )
+        db.add(setting_row)
+    else:
+        setting_row.value_json = json.dumps(smtp_dict)
+        setting_row.updated_by_user_id = current_admin.id
+    db.commit()
+
+    log_audit(
+        db, current_admin.id, current_admin.email,
+        "smtp_settings_updated", "platform_setting",
+        details={
+            "smtp_host": settings.SMTP_HOST,
+            "smtp_port": settings.SMTP_PORT,
+            "smtp_user": settings.SMTP_USER,
+            "is_configured": EmailService.is_configured()
+        }
+    )
+    return {
+        "status": "success",
+        "message": "SMTP mail server configuration updated and applied successfully.",
+        "is_configured": EmailService.is_configured()
+    }
+
+@router.post("/settings/smtp/test")
+def test_smtp_configuration(
+    req: TestEmailRequest,
+    current_admin: User = Depends(require_permission("platform.settings.update")),
+    db: Session = Depends(get_db)
+):
+    """Dispatch an immediate live diagnostic test email to verify SMTP handshake & delivery."""
+    result = EmailService.send_test_email(req.recipient_email)
+
+    log_audit(
+        db, current_admin.id, current_admin.email,
+        "smtp_test_email_dispatched", "platform_setting",
+        details={"recipient": req.recipient_email, "success": result.get("success")}
+    )
+    return result
 
 @router.get("/subscriptions")
 def list_admin_subscriptions(

@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { 
   ShieldCheck, LayoutDashboard, Users, Key, CreditCard, Sliders, 
   Database, FileText, LogOut, ExternalLink, Settings, KeyRound,
-  AlertTriangle, X, CheckCircle2, AlertCircle, Lock
+  AlertTriangle, X, CheckCircle2, AlertCircle, Lock, Mail
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
@@ -95,6 +95,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { label: 'Access Control (RBAC)', href: '/admin/access-control', icon: Key },
     { label: 'Financials & Payments', href: '/admin/payments', icon: CreditCard },
     { label: 'Paystack Gateway', href: '/admin/settings/payments', icon: Sliders },
+    { label: 'Email & SMTP Setup', href: '/admin/settings/email', icon: Mail },
     { label: 'Subscription Tiers', href: '/admin/subscriptions', icon: Settings },
     { label: 'Data Sources Registry', href: '/admin/data-sources', icon: Database },
     { label: 'Security Audit Logs', href: '/admin/audit-logs', icon: FileText },

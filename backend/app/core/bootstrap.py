@@ -361,5 +361,26 @@ def bootstrap_system(db: Session):
                 )
                 db.add(req)
 
+    # 7. Restore dynamic SMTP configuration from PlatformSetting if present
+    try:
+        smtp_setting = db.query(PlatformSetting).filter_by(key="smtp_settings").first()
+        if smtp_setting and smtp_setting.value_json:
+            val = json.loads(smtp_setting.value_json)
+            if val.get("smtp_host"):
+                settings.SMTP_HOST = val["smtp_host"]
+            if val.get("smtp_port"):
+                settings.SMTP_PORT = int(val["smtp_port"])
+            if val.get("smtp_user"):
+                settings.SMTP_USER = val["smtp_user"]
+            if val.get("smtp_password"):
+                settings.SMTP_PASSWORD = val["smtp_password"]
+            if val.get("smtp_from_email"):
+                settings.SMTP_FROM_EMAIL = val["smtp_from_email"]
+            if val.get("smtp_from_name"):
+                settings.SMTP_FROM_NAME = val["smtp_from_name"]
+            logger.info("Restored dynamic SMTP settings from platform configuration.")
+    except Exception as e:
+        logger.warning(f"Could not restore SMTP settings from database: {e}")
+
     db.commit()
     logger.info("Farm Intelligence bootstrap finished successfully.")

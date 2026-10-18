@@ -93,3 +93,14 @@ class AdminRoleUpdateRequest(BaseModel):
 class AdminStatusUpdateRequest(BaseModel):
     status: str
 
+class SMTPSettingsUpdate(BaseModel):
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from_email: Optional[str] = None
+    smtp_from_name: Optional[str] = None
+
+class TestEmailRequest(BaseModel):
+    recipient_email: EmailStr
+
