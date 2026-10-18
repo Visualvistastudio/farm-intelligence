@@ -126,6 +126,28 @@ SMTP_FROM_EMAIL="noreply@farmintelligence.africa"
 
 ---
 
-## 6. License & Scientific Attribution
+## 6. Cloud & Production Deployment Guide
+
+### Deploying Frontend to Vercel (vercel.app)
+1. Go to **[vercel.com/new](https://vercel.com/new)** and connect your GitHub account.
+2. Select your repository: **`Visualvistastudio/farm-intelligence`**.
+3. **Configure Project Settings**:
+   - **Framework Preset**: Next.js (automatically detected).
+   - **Root Directory**: Click **Edit** and choose `frontend`.
+   - **Build Command**: `npm run build` (default).
+   - **Output Directory**: `.next` (default).
+4. **Environment Variables**:
+   - Add `NEXT_PUBLIC_API_URL` set to your live backend domain (e.g. `https://your-api.onrender.com`).
+5. Click **Deploy**. Vercel will build and assign you a live `https://farm-intelligence-xxx.vercel.app` domain.
+
+### Deploying FastAPI Backend (Render / Railway / Fly.io)
+Because FastAPI utilizes persistent database storage (SQLite / PostgreSQL) and long-running background tasks, deploy the `backend/` folder to a persistent host:
+- **Render.com**: Create a **Web Service**, select `backend` as the Root Directory, `pip install -r requirements.txt` as Build Command, and `uvicorn app.main:app --host 0.0.0.0 --port $PORT` as Start Command.
+- **Railway.app**: New Project -> Deploy from GitHub repo -> select `backend` directory.
+
+---
+
+## 7. License & Scientific Attribution
 - Developed for Nigerian agricultural transformation and global scalability.
 - Integrates open agroclimatic data from NASA POWER and FAO Crop Calendar.
+
